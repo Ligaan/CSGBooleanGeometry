@@ -3,6 +3,8 @@
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 
+#include <limits>
+
 Mesh Shapes::CreateSphere(float radius, unsigned int sectorCount, unsigned int stackCount, glm::vec3 color) {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -246,5 +248,76 @@ Mesh Shapes::OpenGLDataInitialize(std::vector<float>& vertices, std::vector<unsi
 
     glBindVertexArray(0); // Unbind
 
-    return { VAO, VBO, EBO, static_cast<GLsizei>(indices.size()) };
+    return { VAO, VBO, EBO, static_cast<GLsizei>(indices.size()),vertices,indices };
+}
+
+void Shapes::ProjectOntoAxis(
+    const std::vector<float>& vertices,
+    const glm::vec3& axis,
+    const glm::mat4& modelMatrix,
+    float& min,
+    float& max
+) {
+    min = std::numeric_limits<float>::infinity();
+    max = -std::numeric_limits<float>::infinity();
+    for (int i = 0;i < vertices.size() / 9; i++) {
+        glm::vec4 localPos(vertices[i * 9], vertices[i * 9 + 1], vertices[i * 9 + 2], 1.0f);
+        glm::vec3 worldPos = glm::vec3(modelMatrix * localPos);
+        float projection = glm::dot(worldPos, axis);
+
+        min = std::min(min, projection);
+        max = std::max(max, projection);
+    }
+}
+
+bool Shapes::AreMeshesIntersectingSAT(
+    const Mesh& meshA, const glm::mat4& modelA,
+    const Mesh& meshB, const glm::mat4& modelB,
+    const std::vector<glm::vec3>& faceNormalsA,
+    const std::vector<glm::vec3>& faceNormalsB
+) {
+    std::vector<glm::vec3> axes = faceNormalsA;
+    axes.insert(axes.end(), faceNormalsB.begin(), faceNormalsB.end());
+
+    // Optional: Add edge cross-products if using polyhedra like cylinders and boxes
+
+    for (const glm::vec3& axis : axes) {
+        if (glm::length(axis) < 1e-6f) continue; // skip tiny vectors
+
+        float minA, maxA, minB, maxB;
+        ProjectOntoAxis(meshA.vertices,  axis, modelA, minA, maxA);
+        ProjectOntoAxis(meshB.vertices,  axis, modelB, minB, maxB);
+
+        if (maxA < minB || maxB < minA) {
+            return false; // Separating axis found
+        }
+    }
+
+    return true; // No separating axis => Intersection
+}
+
+std::vector<glm::vec3> Shapes::CalculateFaceNormals(const Mesh& mesh, const glm::mat4& modelMatrix) {
+    std::vector<glm::vec3> normals;
+
+    for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+        unsigned int idx0 = mesh.indices[i];
+        unsigned int idx1 = mesh.indices[i + 1];
+        unsigned int idx2 = mesh.indices[i + 2];
+
+        glm::vec4 p0(mesh.vertices[idx0 * 9], mesh.vertices[idx0 * 9 + 1], mesh.vertices[idx0 * 9 + 2], 1.0f);
+        glm::vec4 p1(mesh.vertices[idx1 * 9], mesh.vertices[idx1 * 9 + 1], mesh.vertices[idx1 * 9 + 2], 1.0f);
+        glm::vec4 p2(mesh.vertices[idx2 * 9], mesh.vertices[idx2 * 9 + 1], mesh.vertices[idx2 * 9 + 2], 1.0f);
+
+        glm::vec3 v0 = glm::vec3(modelMatrix * p0);
+        glm::vec3 v1 = glm::vec3(modelMatrix * p1);
+        glm::vec3 v2 = glm::vec3(modelMatrix * p2);
+
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = v2 - v0;
+        glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
+
+        normals.push_back(normal);
+    }
+
+    return normals;
 }

@@ -78,7 +78,6 @@ void ApplicationWindow::Update()
         // -----
         processInput(window);
         Render();
-        
     }
 }
 
@@ -110,8 +109,9 @@ void ApplicationWindow::Render()
 
 
     // world transformation
-    glm::mat4 model = glm::mat4(1.0f);
-    ourShader->setMat4("model", model);
+    glm::mat4 model1 = glm::mat4(1.0f);
+    model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
+    ourShader->setMat4("model", model1);
 
     // render the cube
     glBindVertexArray(shape1.VAO);
@@ -119,8 +119,14 @@ void ApplicationWindow::Render()
     glBindVertexArray(0);
 
     // world transformation
-    model = glm::translate(model,glm::vec3(5.0f,0.0f,0.0f));
-    ourShader->setMat4("model", model);
+    glm::mat4 model2 = glm::mat4(1.0f);
+    model2 = glm::translate(model2,glm::vec3(6.0f,1.0f,1.0f));
+    ourShader->setMat4("model", model2);
+
+    auto normalsA = Shapes::CalculateFaceNormals(shape1, model1);
+    auto normalsB = Shapes::CalculateFaceNormals(shape2, model2);
+    bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2, normalsA, normalsB);
+    std::cout << intersects<<"\n";
 
     // render the cube
     glBindVertexArray(shape2.VAO);
