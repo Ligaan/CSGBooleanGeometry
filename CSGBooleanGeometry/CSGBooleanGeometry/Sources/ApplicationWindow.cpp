@@ -60,7 +60,8 @@ void ApplicationWindow::Initialize()
 
     glEnable(GL_DEPTH_TEST);
 
-    shape1 = Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
+    shape1 = Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
+    shape2 = Shapes::CreateBox(1.0f,1.0f,2.0f, glm::vec3(0.2f,0.6f,0.9f));
 
     ourShader = new Shader("Sources/shader.vs", "Sources/shader.fs");
 }
@@ -117,6 +118,15 @@ void ApplicationWindow::Render()
     glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
+    // world transformation
+    model = glm::translate(model,glm::vec3(5.0f,0.0f,0.0f));
+    ourShader->setMat4("model", model);
+
+    // render the cube
+    glBindVertexArray(shape2.VAO);
+    glDrawElements(GL_TRIANGLES, shape2.indexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
     // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
     // -------------------------------------------------------------------------------
     glfwSwapBuffers(window);
@@ -126,7 +136,7 @@ void ApplicationWindow::Render()
 void ApplicationWindow::Shutdown()
 {
     glDeleteVertexArrays(1, &shape1.VAO);
-
+    glDeleteVertexArrays(1, &shape2.VAO);
     glfwTerminate();
 }
 
