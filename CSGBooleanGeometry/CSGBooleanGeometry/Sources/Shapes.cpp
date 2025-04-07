@@ -2,7 +2,7 @@
 #include <array>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
-
+#include <unordered_set>
 #include <limits>
 
 Mesh Shapes::CreateSphere(float radius, unsigned int sectorCount, unsigned int stackCount, glm::vec3 color) {
@@ -272,12 +272,14 @@ void Shapes::ProjectOntoAxis(
 
 bool Shapes::AreMeshesIntersectingSAT(
     const Mesh& meshA, const glm::mat4& modelA,
-    const Mesh& meshB, const glm::mat4& modelB,
-    const std::vector<glm::vec3>& faceNormalsA,
-    const std::vector<glm::vec3>& faceNormalsB
+    const Mesh& meshB, const glm::mat4& modelB
 ) {
+    const std::vector<glm::vec3>& faceNormalsA = CalculateFaceNormals(meshA, modelA);
+    const std::vector<glm::vec3>& faceNormalsB = CalculateFaceNormals(meshB, modelB);
+
     std::vector<glm::vec3> axes = faceNormalsA;
     axes.insert(axes.end(), faceNormalsB.begin(), faceNormalsB.end());
+
 
     // Optional: Add edge cross-products if using polyhedra like cylinders and boxes
 
@@ -320,4 +322,42 @@ std::vector<glm::vec3> Shapes::CalculateFaceNormals(const Mesh& mesh, const glm:
     }
 
     return normals;
+}
+
+bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point, const Mesh& mesh, const std::vector<unsigned int>& indices, const glm::mat4 model)
+{
+    auto normals = CalculateFaceNormals(mesh, model);
+    for (int i = 0;i < normals.size();i++) {
+        unsigned int idx0 = mesh.indices[i*3];
+
+        glm::vec3 v0(mesh.vertices[idx0 * 9], mesh.vertices[idx0 * 9 + 1], mesh.vertices[idx0 * 9 + 2]);
+        glm::vec3 edge0 = point - v0;
+        float dotProduct = glm::dot(normals[i], edge0);
+
+        if (dotProduct < 0)
+            return false;
+    }
+    return true;
+}
+
+std::vector<unsigned int> Shapes::GetConnectedVertices(const Mesh& mesh, unsigned int vertexIndex) {
+    std::unordered_set<unsigned int> connectedVertices;
+
+    // Each triangle is represented by 3 consecutive indices
+    for (unsigned int i = 0; i < mesh.indices.size(); i += 3) {
+        unsigned int idx1 = mesh.indices[i];
+        unsigned int idx2 = mesh.indices[i + 1];
+        unsigned int idx3 = mesh.indices[i + 2];
+
+        // Check if vertexIndex is part of the triangle
+        if (idx1 == vertexIndex || idx2 == vertexIndex || idx3 == vertexIndex) {
+            // Add the other two vertices (edges)
+            if (idx1 != vertexIndex) connectedVertices.insert(idx1);
+            if (idx2 != vertexIndex) connectedVertices.insert(idx2);
+            if (idx3 != vertexIndex) connectedVertices.insert(idx3);
+        }
+    }
+
+    // Convert the set to a vector and return it
+    return std::vector<unsigned int>(connectedVertices.begin(), connectedVertices.end());
 }

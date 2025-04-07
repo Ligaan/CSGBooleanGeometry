@@ -28,10 +28,10 @@ public:
     );
     static bool AreMeshesIntersectingSAT(
         const Mesh& meshA, const glm::mat4& modelA,
-        const Mesh& meshB, const glm::mat4& modelB,
-        const std::vector<glm::vec3>& faceNormalsA,
-        const std::vector<glm::vec3>& faceNormalsB
+        const Mesh& meshB, const glm::mat4& modelB
     );
     static std::vector<glm::vec3> CalculateFaceNormals(const Mesh& mesh, const glm::mat4& modelMatrix);
+    static bool IsPointInsideConvexMesh(const glm::vec3& point, const const Mesh& mesh, const std::vector<unsigned int>& indices, const glm::mat4 model);
+    static std::vector<unsigned int> GetConnectedVertices(const Mesh& mesh, unsigned int vertexIndex);
 };
 

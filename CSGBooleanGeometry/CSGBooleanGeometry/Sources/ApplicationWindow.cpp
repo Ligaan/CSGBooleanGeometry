@@ -123,9 +123,7 @@ void ApplicationWindow::Render()
     model2 = glm::translate(model2,glm::vec3(6.0f,1.0f,1.0f));
     ourShader->setMat4("model", model2);
 
-    auto normalsA = Shapes::CalculateFaceNormals(shape1, model1);
-    auto normalsB = Shapes::CalculateFaceNormals(shape2, model2);
-    bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2, normalsA, normalsB);
+    bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2);
     std::cout << intersects<<"\n";
 
     // render the cube
