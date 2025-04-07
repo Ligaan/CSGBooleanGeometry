@@ -71,12 +71,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glad\Include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)..\external\GLFW\Lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)..\external\glm\Include;$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glad\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)..\external\GLFW\Lib;$(ProjectDir)..\external\glm\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glad\Include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)..\external\GLFW\Lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)..\external\glm\Include;$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glad\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)..\external\GLFW\Lib;$(ProjectDir)..\external\glm\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -112,7 +112,8 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\external;$(ProjectDir)..\external\GLFW\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\external;$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glm\Include;$(ProjectDir)..\external\glad\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -129,7 +130,8 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;_CRT_SECURE_NO_WARNINGS;_CONSOLE</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\external;$(ProjectDir)..\external\GLFW\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\external;$(ProjectDir)..\external\GLFW\Include;$(ProjectDir)..\external\glm\Include;$(ProjectDir)..\external\glad\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -141,8 +143,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="CSGBooleanGeometry.cpp" />
-    <ClCompile Include="glad.c" />
+    <ClCompile Include="Sources\CSGBooleanGeometry.cpp" />
+    <ClCompile Include="Sources\glad.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Sources\Camera.h" />
+    <ClInclude Include="Sources\Shader.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Sources\shader.fs" />
+    <None Include="Sources\shader.vs" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
