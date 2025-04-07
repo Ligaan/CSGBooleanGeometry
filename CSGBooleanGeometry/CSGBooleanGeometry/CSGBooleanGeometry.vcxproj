@@ -143,10 +143,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Sources\Shapes.cpp" />
+    <ClCompile Include="Sources\ApplicationWindow.cpp" />
     <ClCompile Include="Sources\CSGBooleanGeometry.cpp" />
     <ClCompile Include="Sources\glad.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Sources\Shapes.h" />
+    <ClInclude Include="Sources\ApplicationWindow.h" />
     <ClInclude Include="Sources\Camera.h" />
     <ClInclude Include="Sources\Shader.h" />
   </ItemGroup>
