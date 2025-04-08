@@ -60,7 +60,7 @@ void ApplicationWindow::Initialize()
 
     glEnable(GL_DEPTH_TEST);
 
-    shape1 = Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
+    shape1 = Shapes::CreateBox(1.0f, 1.0f, 2.0f, glm::vec3(0.6f, 0.2f, 0.9f)); //Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
     shape2 = Shapes::CreateBox(1.0f,1.0f,2.0f, glm::vec3(0.2f,0.6f,0.9f));
 
     ourShader = new Shader("Sources/shader.vs", "Sources/shader.fs");
@@ -120,11 +120,14 @@ void ApplicationWindow::Render()
 
     // world transformation
     glm::mat4 model2 = glm::mat4(1.0f);
-    model2 = glm::translate(model2,glm::vec3(6.0f,1.0f,1.0f));
+    model2 = glm::translate(model2,glm::vec3(5.5f,0.5f,1.0f));
     ourShader->setMat4("model", model2);
 
     bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2);
-    std::cout << intersects<<"\n";
+    if (intersects) {
+        bool firstMeshPoints;
+        auto points = Shapes::GetVertexesWithinMesh(shape1, model1, shape2, model2, firstMeshPoints);
+    }
 
     // render the cube
     glBindVertexArray(shape2.VAO);

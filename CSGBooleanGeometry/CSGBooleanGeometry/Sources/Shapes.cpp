@@ -324,14 +324,16 @@ std::vector<glm::vec3> Shapes::CalculateFaceNormals(const Mesh& mesh, const glm:
     return normals;
 }
 
-bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point, const Mesh& mesh, const std::vector<unsigned int>& indices, const glm::mat4 model)
+bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point, const Mesh& mesh, const glm::mat4 model)
 {
     auto normals = CalculateFaceNormals(mesh, model);
     for (int i = 0;i < normals.size();i++) {
-        unsigned int idx0 = mesh.indices[i*3];
+
+        unsigned int idx0 = mesh.indices[i * 3];
 
         glm::vec3 v0(mesh.vertices[idx0 * 9], mesh.vertices[idx0 * 9 + 1], mesh.vertices[idx0 * 9 + 2]);
-        glm::vec3 edge0 = point - v0;
+        glm::vec3 worldV0 = glm::vec3(model * glm::vec4(v0, 1.0f));
+        glm::vec3 edge0 =  worldV0 - point;
         float dotProduct = glm::dot(normals[i], edge0);
 
         if (dotProduct < 0)
@@ -360,4 +362,28 @@ std::vector<unsigned int> Shapes::GetConnectedVertices(const Mesh& mesh, unsigne
 
     // Convert the set to a vector and return it
     return std::vector<unsigned int>(connectedVertices.begin(), connectedVertices.end());
+}
+
+std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB, bool& firstMeshPoints)
+{
+    std::vector<unsigned int> pointsWithin;
+    firstMeshPoints = true;
+    for (int i = 0;i < meshA.vertices.size();i += 9) {
+        glm::vec3 v0(meshA.vertices[i], meshA.vertices[i + 1], meshA.vertices[i + 2]);
+        glm::vec3 worldV0 = glm::vec3(modelMatrixA * glm::vec4(v0, 1.0f));
+        if (IsPointInsideConvexMesh(worldV0, meshB, modelMatrixB)) {
+            pointsWithin.push_back(i / 9);
+        }
+    }
+    if (pointsWithin.empty()) {
+        firstMeshPoints = false;
+        for (int i = 0;i < meshB.vertices.size();i += 9) {
+            glm::vec3 v0(meshB.vertices[i], meshB.vertices[i + 1], meshB.vertices[i + 2]);
+            glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(v0, 1.0f));
+            if (IsPointInsideConvexMesh(worldV0, meshA, modelMatrixA)) {
+                pointsWithin.push_back(i / 9);
+            }
+        }
+    }
+    return pointsWithin;
 }
