@@ -5,6 +5,31 @@
 #include <unordered_set>
 #include <limits>
 
+void Shapes::ExtractUniquePositionsAndIndices(const Mesh& mesh, std::vector<glm::vec3>& outPositions, std::vector<unsigned int>& outIndices)
+{
+    std::unordered_map<glm::vec3, unsigned int, Vec3Hash, Vec3Equal> positionToIndex;
+    outPositions.clear();
+    outIndices.clear();
+
+    for (size_t i = 0; i < mesh.indices.size(); ++i) {
+        unsigned int originalIndex = mesh.indices[i];
+        glm::vec3 position(
+            mesh.vertices[originalIndex * 9 + 0],
+            mesh.vertices[originalIndex * 9 + 1],
+            mesh.vertices[originalIndex * 9 + 2]
+        );
+
+        if (positionToIndex.count(position) == 0) {
+            // New unique position
+            unsigned int newIndex = static_cast<unsigned int>(outPositions.size());
+            outPositions.push_back(position);
+            positionToIndex[position] = newIndex;
+        }
+
+        outIndices.push_back(positionToIndex[position]);
+    }
+}
+
 Mesh Shapes::CreateSphere(float radius, unsigned int sectorCount, unsigned int stackCount, glm::vec3 color) {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -324,66 +349,95 @@ std::vector<glm::vec3> Shapes::CalculateFaceNormals(const Mesh& mesh, const glm:
     return normals;
 }
 
-bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point, const Mesh& mesh, const glm::mat4 model)
+bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point,
+    const std::vector<glm::vec3>& vertexPositions,
+    const std::vector<unsigned int>& indices,
+    const glm::mat4& model)
 {
-    auto normals = CalculateFaceNormals(mesh, model);
-    for (int i = 0;i < normals.size();i++) {
+    size_t triangleCount = indices.size() / 3;
 
-        unsigned int idx0 = mesh.indices[i * 3];
+    for (size_t i = 0; i < triangleCount; ++i) {
+        unsigned int idx0 = indices[i * 3];
+        unsigned int idx1 = indices[i * 3 + 1];
+        unsigned int idx2 = indices[i * 3 + 2];
 
-        glm::vec3 v0(mesh.vertices[idx0 * 9], mesh.vertices[idx0 * 9 + 1], mesh.vertices[idx0 * 9 + 2]);
-        glm::vec3 worldV0 = glm::vec3(model * glm::vec4(v0, 1.0f));
-        glm::vec3 edge0 =  worldV0 - point;
-        float dotProduct = glm::dot(normals[i], edge0);
+        // Get transformed vertices
+        glm::vec3 v0 = glm::vec3(model * glm::vec4(vertexPositions[idx0], 1.0f));
+        glm::vec3 v1 = glm::vec3(model * glm::vec4(vertexPositions[idx1], 1.0f));
+        glm::vec3 v2 = glm::vec3(model * glm::vec4(vertexPositions[idx2], 1.0f));
 
-        if (dotProduct < 0)
-            return false;
+        // Compute face normal
+        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+        // Check point against the face plane
+        float dotProduct = glm::dot(normal, point - v0);
+
+        if (dotProduct > 0.0f) {
+            return false; // Point is outside this face
+        }
     }
-    return true;
+
+    return true; // Point is inside all face planes
 }
 
-std::vector<unsigned int> Shapes::GetConnectedVertices(const Mesh& mesh, unsigned int vertexIndex) {
+std::vector<unsigned int> Shapes::GetConnectedVertices(const std::vector<unsigned int>& Indices,
+    unsigned int vertexIndex) {
     std::unordered_set<unsigned int> connectedVertices;
 
-    // Each triangle is represented by 3 consecutive indices
-    for (unsigned int i = 0; i < mesh.indices.size(); i += 3) {
-        unsigned int idx1 = mesh.indices[i];
-        unsigned int idx2 = mesh.indices[i + 1];
-        unsigned int idx3 = mesh.indices[i + 2];
+    for (size_t i = 0; i < Indices.size(); i += 3) {
+        unsigned int idx1 = Indices[i];
+        unsigned int idx2 = Indices[i + 1];
+        unsigned int idx3 = Indices[i + 2];
 
-        // Check if vertexIndex is part of the triangle
         if (idx1 == vertexIndex || idx2 == vertexIndex || idx3 == vertexIndex) {
-            // Add the other two vertices (edges)
             if (idx1 != vertexIndex) connectedVertices.insert(idx1);
             if (idx2 != vertexIndex) connectedVertices.insert(idx2);
             if (idx3 != vertexIndex) connectedVertices.insert(idx3);
         }
     }
 
-    // Convert the set to a vector and return it
     return std::vector<unsigned int>(connectedVertices.begin(), connectedVertices.end());
 }
 
 std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB, bool& firstMeshPoints)
 {
     std::vector<unsigned int> pointsWithin;
+    std::vector<glm::vec3> vertexPositionA;
+    std::vector<glm::vec3> vertexPositionB;
+    std::vector<unsigned int> IndicesA;
+    std::vector<unsigned int> IndicesB;
+
+    ExtractUniquePositionsAndIndices(meshA, vertexPositionA, IndicesA);
+    ExtractUniquePositionsAndIndices(meshB, vertexPositionB, IndicesB);
+
     firstMeshPoints = true;
-    for (int i = 0;i < meshA.vertices.size();i += 9) {
-        glm::vec3 v0(meshA.vertices[i], meshA.vertices[i + 1], meshA.vertices[i + 2]);
-        glm::vec3 worldV0 = glm::vec3(modelMatrixA * glm::vec4(v0, 1.0f));
-        if (IsPointInsideConvexMesh(worldV0, meshB, modelMatrixB)) {
-            pointsWithin.push_back(i / 9);
+    for (int i = 0;i < vertexPositionA.size();i++) {
+        glm::vec3 worldV0 = glm::vec3(modelMatrixA * glm::vec4(vertexPositionA[i], 1.0f));
+        if (IsPointInsideConvexMesh(worldV0, vertexPositionB, IndicesB, modelMatrixB)) {
+            pointsWithin.push_back(i);
         }
     }
     if (pointsWithin.empty()) {
         firstMeshPoints = false;
-        for (int i = 0;i < meshB.vertices.size();i += 9) {
-            glm::vec3 v0(meshB.vertices[i], meshB.vertices[i + 1], meshB.vertices[i + 2]);
-            glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(v0, 1.0f));
-            if (IsPointInsideConvexMesh(worldV0, meshA, modelMatrixA)) {
-                pointsWithin.push_back(i / 9);
+        for (int i = 0;i < vertexPositionB.size();i++) {
+            glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[i], 1.0f));
+            if (IsPointInsideConvexMesh(worldV0, vertexPositionA, IndicesA, modelMatrixA)) {
+                pointsWithin.push_back(i);
             }
         }
     }
+
+    std::vector<unsigned int> edges;
+    if (firstMeshPoints) {
+        for (auto point : pointsWithin) {
+            edges = GetConnectedVertices(IndicesA, point);
+        }
+    }
+    else {
+        for (auto point : pointsWithin) {
+            edges = GetConnectedVertices(IndicesB, point);
+        }
+    }
+
     return pointsWithin;
 }
