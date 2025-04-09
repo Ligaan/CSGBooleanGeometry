@@ -61,7 +61,7 @@ void ApplicationWindow::Initialize()
 
     glEnable(GL_DEPTH_TEST);
 
-    shape1 = Shapes::CreateBox(1.0f, 1.0f, 2.0f, glm::vec3(0.6f, 0.2f, 0.9f)); //Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
+    shape1 = Shapes::CreateSphere(1.0f, 64.0f, 64.0f, glm::vec3(0.6f, 0.2f, 0.9f)); //Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
     shape2 = Shapes::CreateBox(1.0f,1.0f,2.0f, glm::vec3(0.2f,0.6f,0.9f));
 
         // world transformation

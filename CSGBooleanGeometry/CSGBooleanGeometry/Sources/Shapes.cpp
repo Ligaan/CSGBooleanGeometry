@@ -752,9 +752,9 @@ std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, co
 
     for (int i = 0;i < IndicesB.size();i += 3) {
         Face face;
-        glm::vec3 v0 = vertexPositionB[IndicesA[i]];
-        glm::vec3 v1 = vertexPositionB[IndicesA[i + 1]];
-        glm::vec3 v2 = vertexPositionB[IndicesA[i + 2]];
+        glm::vec3 v0 = vertexPositionB[IndicesB[i]];
+        glm::vec3 v1 = vertexPositionB[IndicesB[i + 1]];
+        glm::vec3 v2 = vertexPositionB[IndicesB[i + 2]];
 
         glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
         face.normal = normal; // You’ll need to add this to your Face struct
