@@ -125,8 +125,9 @@ void ApplicationWindow::Render()
 
     bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2);
     if (intersects) {
-        bool firstMeshPoints;
-        auto points = Shapes::GetVertexesWithinMesh(shape1, model1, shape2, model2, firstMeshPoints);
+        bool firstMeshPoints = true;
+        std::vector<glm::vec3> points = Shapes::GetMeshTriangleIntersection(shape1, model1, shape2, model2);
+        std::vector<glm::vec3> points2 = Shapes::GetIntersectionPoints(shape1, model1, shape2, model2, firstMeshPoints);
     }
 
     // render the cube

@@ -1,9 +1,15 @@
+
 #include "Shapes.h"
 #include <array>
 #include <gtc/matrix_transform.hpp>
 #include <gtc/type_ptr.hpp>
 #include <unordered_set>
 #include <limits>
+
+#include <string>
+#define GLM_ENABLE_EXPERIMENTAL
+#include "gtx/string_cast.hpp"
+#include <iostream>
 
 void Shapes::ExtractUniquePositionsAndIndices(const Mesh& mesh, std::vector<glm::vec3>& outPositions, std::vector<unsigned int>& outIndices)
 {
@@ -29,6 +35,33 @@ void Shapes::ExtractUniquePositionsAndIndices(const Mesh& mesh, std::vector<glm:
         outIndices.push_back(positionToIndex[position]);
     }
 }
+
+void Shapes::ExtractUniquePositionsAndIndicesWorld(const Mesh& mesh, std::vector<glm::vec3>& outPositions, std::vector<unsigned int>& outIndices, const glm::mat4& model)
+{
+    std::unordered_map<glm::vec3, unsigned int, Vec3Hash, Vec3Equal> positionToIndex;
+    outPositions.clear();
+    outIndices.clear();
+
+    for (size_t i = 0; i < mesh.indices.size(); ++i) {
+        unsigned int originalIndex = mesh.indices[i];
+        glm::vec3 position(
+            mesh.vertices[originalIndex * 9 + 0],
+            mesh.vertices[originalIndex * 9 + 1],
+            mesh.vertices[originalIndex * 9 + 2]
+        );
+
+        if (positionToIndex.count(position) == 0) {
+            // New unique position
+            unsigned int newIndex = static_cast<unsigned int>(outPositions.size());
+            position = glm::vec3(model * glm::vec4(position, 1.0f));
+            outPositions.push_back(position);
+            positionToIndex[position] = newIndex;
+        }
+
+        outIndices.push_back(positionToIndex[position]);
+    }
+}
+
 
 Mesh Shapes::CreateSphere(float radius, unsigned int sectorCount, unsigned int stackCount, glm::vec3 color) {
     std::vector<float> vertices;
@@ -351,8 +384,7 @@ std::vector<glm::vec3> Shapes::CalculateFaceNormals(const Mesh& mesh, const glm:
 
 bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point,
     const std::vector<glm::vec3>& vertexPositions,
-    const std::vector<unsigned int>& indices,
-    const glm::mat4& model)
+    const std::vector<unsigned int>& indices)
 {
     size_t triangleCount = indices.size() / 3;
 
@@ -362,9 +394,9 @@ bool Shapes::IsPointInsideConvexMesh(const glm::vec3& point,
         unsigned int idx2 = indices[i * 3 + 2];
 
         // Get transformed vertices
-        glm::vec3 v0 = glm::vec3(model * glm::vec4(vertexPositions[idx0], 1.0f));
-        glm::vec3 v1 = glm::vec3(model * glm::vec4(vertexPositions[idx1], 1.0f));
-        glm::vec3 v2 = glm::vec3(model * glm::vec4(vertexPositions[idx2], 1.0f));
+        glm::vec3 v0 = vertexPositions[idx0];
+        glm::vec3 v1 = vertexPositions[idx1];
+        glm::vec3 v2 = vertexPositions[idx2];
 
         // Compute face normal
         glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
@@ -399,7 +431,7 @@ std::vector<unsigned int> Shapes::GetConnectedVertices(const std::vector<unsigne
     return std::vector<unsigned int>(connectedVertices.begin(), connectedVertices.end());
 }
 
-std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB, bool& firstMeshPoints)
+std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
 {
     std::vector<unsigned int> pointsWithin;
     std::vector<glm::vec3> vertexPositionA;
@@ -410,24 +442,24 @@ std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const
     ExtractUniquePositionsAndIndices(meshA, vertexPositionA, IndicesA);
     ExtractUniquePositionsAndIndices(meshB, vertexPositionB, IndicesB);
 
-    firstMeshPoints = true;
+    //firstMeshPoints = true;
     for (int i = 0;i < vertexPositionA.size();i++) {
         glm::vec3 worldV0 = glm::vec3(modelMatrixA * glm::vec4(vertexPositionA[i], 1.0f));
-        if (IsPointInsideConvexMesh(worldV0, vertexPositionB, IndicesB, modelMatrixB)) {
+        if (IsPointInsideConvexMesh(worldV0, vertexPositionB, IndicesB)) {
             pointsWithin.push_back(i);
         }
     }
-    if (pointsWithin.empty()) {
-        firstMeshPoints = false;
-        for (int i = 0;i < vertexPositionB.size();i++) {
-            glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[i], 1.0f));
-            if (IsPointInsideConvexMesh(worldV0, vertexPositionA, IndicesA, modelMatrixA)) {
-                pointsWithin.push_back(i);
-            }
-        }
-    }
+    //if (pointsWithin.empty()) {
+    //    //firstMeshPoints = false;
+    //    for (int i = 0;i < vertexPositionB.size();i++) {
+    //        glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[i], 1.0f));
+    //        if (IsPointInsideConvexMesh(worldV0, vertexPositionA, IndicesA, modelMatrixA)) {
+    //            pointsWithin.push_back(i);
+    //        }
+    //    }
+    //}
 
-    std::vector<unsigned int> edges;
+    /*std::vector<unsigned int> edges;
     if (firstMeshPoints) {
         for (auto point : pointsWithin) {
             edges = GetConnectedVertices(IndicesA, point);
@@ -437,7 +469,293 @@ std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const
         for (auto point : pointsWithin) {
             edges = GetConnectedVertices(IndicesB, point);
         }
+    }*/
+
+    return pointsWithin;
+}
+
+std::vector<glm::vec3> Shapes::GetVertexesWithinMesh2(const std::vector<glm::vec3>& vertexPositionA,
+    const std::vector<glm::vec3>& vertexPositionB,
+    const std::vector<unsigned int>& IndicesA,
+    const std::vector<unsigned int> IndicesB)
+{
+    std::vector<glm::vec3> pointsWithin;
+
+    for (int i = 0;i < vertexPositionA.size();i++) {
+        if (IsPointInsideConvexMesh(vertexPositionA[i], vertexPositionB, IndicesB)) {
+            pointsWithin.push_back(vertexPositionA[i]);
+        }
     }
 
     return pointsWithin;
+}
+
+std::vector<glm::vec3> Shapes::GetIntersectionPoints(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB, bool firstMeshPoints)
+{
+    std::vector<glm::vec3> intersectionPoints;
+    std::vector<unsigned int> pointsWithinB = GetVertexesWithinMesh(meshA, modelMatrixA, meshB, modelMatrixB);
+    std::vector<unsigned int> pointsWithinA = GetVertexesWithinMesh(meshB, modelMatrixB, meshA, modelMatrixA);
+    std::vector<glm::vec3> vertexPositionA;
+    std::vector<glm::vec3> vertexPositionB;
+    std::vector<unsigned int> IndicesA;
+    std::vector<unsigned int> IndicesB;
+
+    ExtractUniquePositionsAndIndices(meshA, vertexPositionA, IndicesA);
+    ExtractUniquePositionsAndIndices(meshB, vertexPositionB, IndicesB);
+
+    const float tolerance = 0.001f;  // Define a small tolerance for duplicate points
+    std::vector<unsigned int> edges;
+        for (auto point : pointsWithinB) {
+            intersectionPoints.push_back(glm::vec3(modelMatrixA * glm::vec4(vertexPositionA[point], 1.0f)));
+            edges = GetConnectedVertices(IndicesA, point);
+            // For each edge, check for intersection with the other mesh
+            for (auto edge : edges) {
+                // Here you would need to check if the edge intersects with any faces of the other mesh
+                glm::vec3 v0 = glm::vec3(modelMatrixA * glm::vec4(vertexPositionA[point], 1.0f));
+                glm::vec3 v1 = glm::vec3(modelMatrixA * glm::vec4(vertexPositionA[edge], 1.0f));
+                //This needs to be fixed later!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                glm::vec3 intersection = GetEdgeIntersection(v0, v1, vertexPositionB, IndicesB, modelMatrixB)[0];
+                if (glm::length(intersection) > 0.0f) {
+                    bool add = true;
+                    for(auto pointI: intersectionPoints){
+                        if (glm::length(intersection - pointI) < tolerance) {
+                            add = false;
+                            break;
+                        }
+                    }
+                    if (add) {
+                        intersectionPoints.push_back(intersection);
+                    }
+                }
+                /*if (intersections == 2)
+                    break;*/
+            }
+        }
+        for (auto point : pointsWithinA) {
+            intersectionPoints.push_back(glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[point], 1.0f)));
+            edges = GetConnectedVertices(IndicesB, point);
+            for (auto edge : edges) {
+                glm::vec3 v0 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[point], 1.0f));
+                glm::vec3 v1 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[edge], 1.0f));
+                //This needs to be fixed later!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                glm::vec3 intersection = GetEdgeIntersection(v0, v1, vertexPositionA, IndicesA, modelMatrixA)[0];
+                if (glm::length(intersection) > 0.0f) {
+                    bool add = true;
+                    for (auto pointI : intersectionPoints) {
+                        if (glm::length(intersection - pointI) < tolerance) {
+                            add = false;
+                            break;
+                        }
+                    }
+                    if (add) {
+                        intersectionPoints.push_back(intersection);
+                    }
+                }
+                /*if (intersections == 2)
+                    break;*/
+            }
+        }
+
+    std::vector<glm::vec3> uniquePoints;
+
+    for (const auto& point : intersectionPoints) {
+        bool isDuplicate = false;
+        for (const auto& uniquePoint : uniquePoints) {
+            if (glm::length(point - uniquePoint) < tolerance) {
+                isDuplicate = true;
+                break;
+            }
+        }
+        if (!isDuplicate) {
+            uniquePoints.push_back(point);
+        }
+    }
+
+    intersectionPoints = uniquePoints;  // Update points with unique ones
+    for (auto& point : uniquePoints) {
+        std::cout << glm::to_string(point) << "\n";
+    }
+    return intersectionPoints;
+}
+
+
+std::vector<glm::vec3> Shapes::GetEdgeIntersection(const glm::vec3& v0, const glm::vec3& v1, const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices, const glm::mat4& modelMatrix)
+{
+    std::vector<glm::vec3> intersections;  // To store the intersection points
+
+    // Iterate over all triangles in the mesh
+    for (size_t i = 0; i < indices.size() / 3; ++i) {
+        unsigned int idx0 = indices[i * 3];
+        unsigned int idx1 = indices[i * 3 + 1];
+        unsigned int idx2 = indices[i * 3 + 2];
+
+        glm::vec3 v2 = glm::vec3(modelMatrix * glm::vec4(vertices[idx0], 1.0f));
+        glm::vec3 v3 = glm::vec3(modelMatrix * glm::vec4(vertices[idx1], 1.0f));
+        glm::vec3 v4 = glm::vec3(modelMatrix * glm::vec4(vertices[idx2], 1.0f));
+
+        // Check for intersection of the line segment [v0, v1] with the triangle [v2, v3, v4]
+        glm::vec3 intersection;
+        if (LineIntersectsTriangle(v0, v1, v2, v3, v4, intersection)) {
+            intersections.push_back(intersection);  // Store the intersection point
+            if (intersections.size() == 2)
+                break;
+        }
+    }
+
+    // Return the list of intersection points (may be empty if no intersections were found)
+    return intersections;
+}
+
+struct Faces {
+    std::vector<glm::vec3> facePoints;
+    glm::vec3 normal;
+};
+
+std::vector<glm::vec3> Shapes::GetMeshTriangleIntersection(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
+{
+    std::vector<glm::vec3> vertexPositionA;
+    std::vector<glm::vec3> vertexPositionB;
+    std::vector<unsigned int> IndicesA;
+    std::vector<unsigned int> IndicesB;
+    const float tolerance = 0.001f;  // Define a small tolerance for duplicate points
+    ExtractUniquePositionsAndIndicesWorld(meshA, vertexPositionA, IndicesA, modelMatrixA);
+    ExtractUniquePositionsAndIndicesWorld(meshB, vertexPositionB, IndicesB, modelMatrixB);;
+    std::vector<glm::vec3> pointsWithinB = GetVertexesWithinMesh2(vertexPositionA, vertexPositionB, IndicesA, IndicesB);
+    std::vector<glm::vec3> pointsWithinA = GetVertexesWithinMesh2(vertexPositionB, vertexPositionA, IndicesB, IndicesA);
+
+    std::vector<Faces> faces;
+
+    bool intersect;
+    for (int i = 0;i < IndicesA.size();i += 3) {
+        Faces face;
+        for (int j = 0;j < IndicesB.size();j += 3) {
+            glm::vec3 intersection;
+            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+        }
+
+        for (auto& point : pointsWithinB) {
+            if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i+2]])) {
+                face.facePoints.push_back(point);
+            }
+        }
+
+        for (auto& point : pointsWithinA) {
+            if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]])) {
+                face.facePoints.push_back(point);
+            }
+        }
+
+        std::vector<glm::vec3> uniquePoints;
+
+        for (const auto& point : face.facePoints) {
+            bool isDuplicate = false;
+            for (const auto& uniquePoint : uniquePoints) {
+                if (glm::length(point - uniquePoint) < tolerance) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                uniquePoints.push_back(point);
+            }
+        }
+
+        face.facePoints = uniquePoints;
+
+        if(face.facePoints.size()>0)
+        faces.push_back(face);
+    }
+
+    std::vector<glm::vec3> uniquePoints;
+    for (const auto& face :faces) {
+        for (const auto& point : face.facePoints) {
+            bool isDuplicate = false;
+            for (const auto& uniquePoint : uniquePoints) {
+                if (glm::length(point - uniquePoint) < tolerance) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                uniquePoints.push_back(point);
+            }
+        }
+    }
+    for (auto& point : uniquePoints) {
+        std::cout << glm::to_string(point)<<"\n";
+    }
+    std::cout  << "\n";
+    return std::vector<glm::vec3>();
+}
+
+bool Shapes::LineIntersectsTriangle(const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& intersection)
+{
+    const glm::vec3 dir = p1 - p0;
+    const glm::vec3 e1 = v1 - v0;
+    const glm::vec3 e2 = v2 - v0;
+
+    const glm::vec3 h = glm::cross(dir, e2);
+    const float a = glm::dot(e1, h);
+
+    // Parallel check
+    if (fabs(a) < std::numeric_limits<float>::epsilon()) {
+        return false;
+    }
+
+    const float f = 1.0f / a;
+    const glm::vec3 s = p0 - v0;
+    const float u = f * glm::dot(s, h);
+    if (u < 0.0f || u > 1.0f) {
+        return false;
+    }
+
+    const glm::vec3 q = glm::cross(s, e1);
+    const float v = f * glm::dot(dir, q);
+    if (v < 0.0f || u + v > 1.0f) {
+        return false;
+    }
+
+    const float t = f * glm::dot(e2, q);
+    if (t < 0.0f || t > 1.0f) {
+        return false; // Outside segment bounds
+    }
+
+    intersection = p0 + dir * t;
+    return true;
+}
+
+bool Shapes::IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float epsilon)
+{
+    // Compute vectors
+    glm::vec3 v0v1 = v1 - v0;
+    glm::vec3 v0v2 = v2 - v0;
+    glm::vec3 v0p = point - v0;
+
+    // Compute dot products
+    float d00 = glm::dot(v0v1, v0v1);
+    float d01 = glm::dot(v0v1, v0v2);
+    float d11 = glm::dot(v0v2, v0v2);
+    float d20 = glm::dot(v0p, v0v1);
+    float d21 = glm::dot(v0p, v0v2);
+
+    // Compute barycentric coordinates
+    float denom = d00 * d11 - d01 * d01;
+    if (fabs(denom) < epsilon)
+        return false; // Degenerate triangle
+
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+
+    // Check if point is inside or on triangle
+    return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
+        u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
 }

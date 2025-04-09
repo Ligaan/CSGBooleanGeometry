@@ -3,7 +3,6 @@
 
 #include "ApplicationWindow.h"
 
-
 int main()
 {
     ApplicationWindow window;
