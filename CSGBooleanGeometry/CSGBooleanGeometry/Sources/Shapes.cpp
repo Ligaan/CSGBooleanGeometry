@@ -10,7 +10,35 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "gtx/string_cast.hpp"
 #include <iostream>
+#include <algorithm>
+#include <cmath>
 
+
+glm::vec3 CalculateCentroid(const std::vector<glm::vec3>& points) {
+    glm::vec3 centroid(0.0f);
+    for (const auto& point : points) {
+        centroid += point;
+    }
+    return centroid / static_cast<float>(points.size());
+}
+
+// Function to calculate the angle between the point and the centroid
+float AngleBetweenPoints(const glm::vec3& point, const glm::vec3& centroid) {
+    glm::vec2 diff = glm::vec2(point.x - centroid.x, point.y - centroid.y);
+    return std::atan2(diff.y, diff.x); // Use atan2 to get angle in 2D
+}
+
+// Sort the points by angle relative to the centroid
+void SortPointsByAngle(std::vector<glm::vec3>& points) {
+    glm::vec3 centroid = CalculateCentroid(points);
+
+    // Sort the points based on their angle relative to the centroid
+    std::sort(points.begin(), points.end(), [&centroid](const glm::vec3& a, const glm::vec3& b) {
+        return AngleBetweenPoints(a, centroid) < AngleBetweenPoints(b, centroid);
+        });
+}
+
+////////////////////////////////
 void Shapes::ExtractUniquePositionsAndIndices(const Mesh& mesh, std::vector<glm::vec3>& outPositions, std::vector<unsigned int>& outIndices)
 {
     std::unordered_map<glm::vec3, unsigned int, Vec3Hash, Vec3Equal> positionToIndex;
@@ -606,12 +634,9 @@ std::vector<glm::vec3> Shapes::GetEdgeIntersection(const glm::vec3& v0, const gl
     return intersections;
 }
 
-struct Faces {
-    std::vector<glm::vec3> facePoints;
-    glm::vec3 normal;
-};
 
-std::vector<glm::vec3> Shapes::GetMeshTriangleIntersection(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
+
+std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
 {
     std::vector<glm::vec3> vertexPositionA;
     std::vector<glm::vec3> vertexPositionB;
@@ -623,11 +648,17 @@ std::vector<glm::vec3> Shapes::GetMeshTriangleIntersection(const Mesh& meshA, co
     std::vector<glm::vec3> pointsWithinB = GetVertexesWithinMesh2(vertexPositionA, vertexPositionB, IndicesA, IndicesB);
     std::vector<glm::vec3> pointsWithinA = GetVertexesWithinMesh2(vertexPositionB, vertexPositionA, IndicesB, IndicesA);
 
-    std::vector<Faces> faces;
+    std::vector<Face> faces;
 
     bool intersect;
     for (int i = 0;i < IndicesA.size();i += 3) {
-        Faces face;
+        Face face;
+        glm::vec3 v0 = vertexPositionA[IndicesA[i]];
+        glm::vec3 v1 = vertexPositionA[IndicesA[i + 1]];
+        glm::vec3 v2 = vertexPositionA[IndicesA[i + 2]];
+
+        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        face.normal = normal; // You’ll need to add this to your Face struct
         for (int j = 0;j < IndicesB.size();j += 3) {
             glm::vec3 intersection;
             intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
@@ -668,7 +699,9 @@ std::vector<glm::vec3> Shapes::GetMeshTriangleIntersection(const Mesh& meshA, co
             }
         }
 
+        SortPointsByAngle(uniquePoints);
         face.facePoints = uniquePoints;
+        face.indeces = TriangulateConvexPolygon(face.facePoints, face.normal);
 
         if(face.facePoints.size()>0)
         faces.push_back(face);
@@ -693,7 +726,7 @@ std::vector<glm::vec3> Shapes::GetMeshTriangleIntersection(const Mesh& meshA, co
         std::cout << glm::to_string(point)<<"\n";
     }
     std::cout  << "\n";
-    return std::vector<glm::vec3>();
+    return faces;
 }
 
 bool Shapes::LineIntersectsTriangle(const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& intersection)
@@ -758,4 +791,34 @@ bool Shapes::IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, cons
     // Check if point is inside or on triangle
     return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
         u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
+}
+
+std::vector<unsigned int> TriangulateConvexPolygon(const std::vector<glm::vec3>& polygonVertices, const glm::vec3& normal) {
+    std::vector<unsigned int> triangleIndices;
+
+    unsigned int n = polygonVertices.size();
+    if (n < 3) return triangleIndices;
+
+    glm::vec3 v0 = polygonVertices[0];
+    glm::vec3 v1 = polygonVertices[1];
+    glm::vec3 v2 = polygonVertices[2];
+    glm::vec3 polygonNormal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+    unsigned int anchorIndex = 0;
+
+    for (unsigned int i = 1; i < n - 1; ++i) {
+        if (glm::dot(polygonNormal, normal) < 0) {
+            triangleIndices.push_back(anchorIndex);
+            triangleIndices.push_back(i + 1);       
+            triangleIndices.push_back(i);
+        }
+        else {
+
+            triangleIndices.push_back(anchorIndex);  
+            triangleIndices.push_back(i);           
+            triangleIndices.push_back(i + 1);
+        }
+    }
+
+    return triangleIndices;
 }
