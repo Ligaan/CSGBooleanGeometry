@@ -35,6 +35,7 @@ public:
     static float lastX;
     static float lastY;
     static bool firstMouse;
+    static bool buttonPressed;
 
     // timing
     static float deltaTime;

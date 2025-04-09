@@ -16,6 +16,7 @@ Camera ApplicationWindow::camera = Camera(glm::vec3(0.0f, 0.0f, 3.0f));        /
 float ApplicationWindow::lastX = 0.0f;   // Define and initialize static variables
 float ApplicationWindow::lastY = 0.0f;
 bool ApplicationWindow::firstMouse = true;
+bool ApplicationWindow::buttonPressed = false;
 float ApplicationWindow::deltaTime = 0.0f;
 float ApplicationWindow::lastFrame = 0.0f;
 
@@ -130,24 +131,6 @@ void ApplicationWindow::Render()
 
 
 
-    //// world transformation
-    //glm::mat4 model1 = glm::mat4(1.0f);
-    //model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
-    //ourShader->setMat4("model", model1);
-
-    //// render the cube
-    //glBindVertexArray(shape1.VAO);
-    //glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
-    //glBindVertexArray(0);
-
-    //// world transformation
-    //glm::mat4 model2 = glm::mat4(1.0f);
-    //model2 = glm::translate(model2,glm::vec3(5.5f,0.5f,1.0f));
-    //ourShader->setMat4("model", model2);
-
-    //glBindVertexArray(shape2.VAO);
-    //glDrawElements(GL_TRIANGLES, shape2.indexCount, GL_UNSIGNED_INT, 0);
-    //glBindVertexArray(0);
 
    /* bool intersects = Shapes::AreMeshesIntersectingSAT(shape1, model1, shape2, model2);
     if (intersects) {
@@ -156,7 +139,7 @@ void ApplicationWindow::Render()
     }*/
 
     // render the cube
-
+    if (buttonPressed) {
     glm::mat4 model3 = glm::mat4(1.0f);
     model3 = glm::translate(model3, glm::vec3(0.0f, 0.0f, 0.0f));
     ourShader->setMat4("model", model3);
@@ -168,6 +151,31 @@ void ApplicationWindow::Render()
         glDrawElements(GL_TRIANGLES, f.indexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
     }
+
+    }
+    else {
+
+    // world transformation
+    glm::mat4 model1 = glm::mat4(1.0f);
+    model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
+    ourShader->setMat4("model", model1);
+
+    // render the cube
+    glBindVertexArray(shape1.VAO);
+    glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    // world transformation
+    glm::mat4 model2 = glm::mat4(1.0f);
+    model2 = glm::translate(model2,glm::vec3(5.5f,0.5f,1.0f));
+    ourShader->setMat4("model", model2);
+
+    glBindVertexArray(shape2.VAO);
+    glDrawElements(GL_TRIANGLES, shape2.indexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    }
+
 
     // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
     // -------------------------------------------------------------------------------
@@ -186,6 +194,12 @@ void processInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    int state = glfwGetKey(window, GLFW_KEY_SPACE);
+    if (state == GLFW_PRESS)
+        ApplicationWindow::buttonPressed = true;
+    else if (state == GLFW_RELEASE)
+        ApplicationWindow::buttonPressed = false;
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         ApplicationWindow::camera.ProcessKeyboard(FORWARD, ApplicationWindow::deltaTime);
