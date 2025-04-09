@@ -298,6 +298,32 @@ Mesh Shapes::CreateCylinder(float radius, float height, unsigned int sectorCount
     return OpenGLDataInitialize(vertices, indices);
 }
 
+Mesh Shapes::FaceToMesh(Face& face, glm::vec3 color) {
+    Mesh mesh;
+    std::vector<float> vertices;
+
+    // Add the 4 vertices of the face, along with their normals and colors
+    for (const auto& v : face.facePoints) {
+        // Position
+        vertices.push_back(v.x);
+        vertices.push_back(v.y);
+        vertices.push_back(v.z);
+
+        // Normal (same for all vertices of this face)
+        vertices.push_back(face.normal.x);
+        vertices.push_back(face.normal.y);
+        vertices.push_back(face.normal.z);
+
+        // Color
+        vertices.push_back(color.r);
+        vertices.push_back(color.g);
+        vertices.push_back(color.b);
+    }
+
+    // Initialize OpenGL buffers and return the Mesh
+    return OpenGLDataInitialize(vertices, face.indeces);
+}
+
 Mesh Shapes::OpenGLDataInitialize(std::vector<float>& vertices, std::vector<unsigned int>& indices)
 {
     glEnable(GL_CULL_FACE);
@@ -514,6 +540,23 @@ std::vector<glm::vec3> Shapes::GetVertexesWithinMesh2(const std::vector<glm::vec
             pointsWithin.push_back(vertexPositionA[i]);
         }
     }
+    const float tolerance = 0.001f;  // Define a small tolerance for duplicate points
+    std::vector<glm::vec3> uniquePoints;
+
+    for (const auto& point : pointsWithin) {
+        bool isDuplicate = false;
+        for (const auto& uniquePoint : uniquePoints) {
+            if (glm::length(point - uniquePoint) < tolerance) {
+                isDuplicate = true;
+                break;
+            }
+        }
+        if (!isDuplicate) {
+            uniquePoints.push_back(point);
+        }
+    }
+
+    pointsWithin = uniquePoints;
 
     return pointsWithin;
 }
@@ -707,6 +750,63 @@ std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, co
         faces.push_back(face);
     }
 
+    for (int i = 0;i < IndicesB.size();i += 3) {
+        Face face;
+        glm::vec3 v0 = vertexPositionB[IndicesA[i]];
+        glm::vec3 v1 = vertexPositionB[IndicesA[i + 1]];
+        glm::vec3 v2 = vertexPositionB[IndicesA[i + 2]];
+
+        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        face.normal = normal; // You’ll need to add this to your Face struct
+        for (int j = 0;j < IndicesA.size();j += 3) {
+            glm::vec3 intersection;
+            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 2]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i+1]], vertexPositionB[IndicesB[i + 2]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
+            if (intersect)
+                face.facePoints.push_back(intersection);
+        }
+
+        for (auto& point : pointsWithinB) {
+            if (IsPointInTriangle(point, vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]])) {
+                face.facePoints.push_back(point);
+            }
+        }
+
+        for (auto& point : pointsWithinA) {
+            if (IsPointInTriangle(point, vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]])) {
+                face.facePoints.push_back(point);
+            }
+        }
+
+        std::vector<glm::vec3> uniquePoints;
+
+        for (const auto& point : face.facePoints) {
+            bool isDuplicate = false;
+            for (const auto& uniquePoint : uniquePoints) {
+                if (glm::length(point - uniquePoint) < tolerance) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                uniquePoints.push_back(point);
+            }
+        }
+
+        SortPointsByAngle(uniquePoints);
+        face.facePoints = uniquePoints;
+        face.indeces = TriangulateConvexPolygon(face.facePoints, face.normal);
+
+        if (face.facePoints.size() > 0)
+            faces.push_back(face);
+    }
+
+
     std::vector<glm::vec3> uniquePoints;
     for (const auto& face :faces) {
         for (const auto& point : face.facePoints) {
@@ -767,33 +867,70 @@ bool Shapes::LineIntersectsTriangle(const glm::vec3& p0, const glm::vec3& p1, co
 
 bool Shapes::IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float epsilon)
 {
-    // Compute vectors
-    glm::vec3 v0v1 = v1 - v0;
-    glm::vec3 v0v2 = v2 - v0;
-    glm::vec3 v0p = point - v0;
+    //// Compute vectors
+    //glm::vec3 v0v1 = v1 - v0;
+    //glm::vec3 v0v2 = v2 - v0;
+    //glm::vec3 v0p = point - v0;
 
-    // Compute dot products
-    float d00 = glm::dot(v0v1, v0v1);
-    float d01 = glm::dot(v0v1, v0v2);
-    float d11 = glm::dot(v0v2, v0v2);
-    float d20 = glm::dot(v0p, v0v1);
-    float d21 = glm::dot(v0p, v0v2);
+    //// Compute dot products
+    //float d00 = glm::dot(v0v1, v0v1);
+    //float d01 = glm::dot(v0v1, v0v2);
+    //float d11 = glm::dot(v0v2, v0v2);
+    //float d20 = glm::dot(v0p, v0v1);
+    //float d21 = glm::dot(v0p, v0v2);
 
-    // Compute barycentric coordinates
-    float denom = d00 * d11 - d01 * d01;
-    if (fabs(denom) < epsilon)
-        return false; // Degenerate triangle
+    //// Compute barycentric coordinates
+    //float denom = d00 * d11 - d01 * d01;
+    //if (fabs(denom) < epsilon)
+    //    return false; // Degenerate triangle
 
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u = 1.0f - v - w;
+    //float v = (d11 * d20 - d01 * d21) / denom;
+    //float w = (d00 * d21 - d01 * d20) / denom;
+    //float u = 1.0f - v - w;
 
-    // Check if point is inside or on triangle
-    return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
-        u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
+    //// Check if point is inside or on triangle
+    //return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
+    //    u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
+
+    glm::vec3 p = point;
+    glm::vec3 a = v0;
+    glm::vec3 b = v1;
+    glm::vec3 c = v2;
+
+    // Move the triangle so that the point becomes the 
+    // triangles origin
+    a -= p;
+    b -= p;
+    c -= p;
+
+    // The point should be moved too, so they are both
+    // relative, but because we don't use p in the
+    // equation anymore, we don't need it!
+    // p -= p;
+
+    // Compute the normal vectors for triangles:
+    // u = normal of PBC
+    // v = normal of PCA
+    // w = normal of PAB
+
+    glm::vec3 u = glm::cross(b, c);
+    glm::vec3 v = glm::cross(c, a);
+    glm::vec3 w = glm::cross(a, b);
+
+    // Test to see if the normals are facing 
+    // the same direction, return false if not
+    if (glm::dot(u, v) < 0.0f) {
+        return false;
+    }
+    if (dot(u, w) < 0.0f) {
+        return false;
+    }
+
+    // All normals facing the same way, return true
+    return true;
 }
 
-std::vector<unsigned int> TriangulateConvexPolygon(const std::vector<glm::vec3>& polygonVertices, const glm::vec3& normal) {
+std::vector<unsigned int> Shapes::TriangulateConvexPolygon(const std::vector<glm::vec3>& polygonVertices, const glm::vec3& normal) {
     std::vector<unsigned int> triangleIndices;
 
     unsigned int n = polygonVertices.size();

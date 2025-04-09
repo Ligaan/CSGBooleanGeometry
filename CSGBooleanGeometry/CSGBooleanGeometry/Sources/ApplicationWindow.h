@@ -45,5 +45,6 @@ public:
 
     Shader* ourShader = nullptr;
     Mesh shape1, shape2;
+    std::vector<Mesh> face;
 };
 
