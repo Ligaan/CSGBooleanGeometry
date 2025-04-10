@@ -13,6 +13,203 @@
 #include <algorithm>
 #include <cmath>
 
+void DebugPrintTriangleNormals(const std::vector<glm::vec3>& points, const std::vector<unsigned int>& indices,glm::vec3 normalT) {
+    std::cout << glm::to_string(normalT) << "\n\n";
+    for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+        glm::vec3 v0 = points[indices[i]];
+        glm::vec3 v1 = points[indices[i + 1]];
+        glm::vec3 v2 = points[indices[i + 2]];
+
+        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+        std::cout << glm::to_string(normal) << "\n";
+        std::cout << glm::to_string(v0) << "\n";
+        std::cout << glm::to_string(v1) << "\n";
+        std::cout << glm::to_string(v2) << "\n\n";
+    }
+}
+
+void BuildVertexBufferFromPositionsAndIndices(
+    const std::vector<glm::vec3>& positions,
+    const std::vector<unsigned int>& indices,
+    std::vector<float>& outVertexBuffer,
+    const glm::vec3& color)
+{
+    const size_t vertexCount = positions.size();
+    std::vector<glm::vec3> normals(vertexCount, glm::vec3(0.0f));
+
+    // Step 1: Accumulate triangle normals per vertex
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        unsigned int i0 = indices[i];
+        unsigned int i1 = indices[i + 1];
+        unsigned int i2 = indices[i + 2];
+
+        const glm::vec3& v0 = positions[i0];
+        const glm::vec3& v1 = positions[i1];
+        const glm::vec3& v2 = positions[i2];
+
+        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+
+        normals[i0] += normal;
+        normals[i1] += normal;
+        normals[i2] += normal;
+    }
+
+    // Step 2: Normalize the accumulated normals
+    for (glm::vec3& n : normals) {
+        n = glm::normalize(n);
+    }
+
+    // Step 3: Build the vertex buffer (pos + normal + color)
+    outVertexBuffer.clear();
+    outVertexBuffer.reserve(vertexCount * 9);
+
+    for (size_t i = 0; i < vertexCount; ++i) {
+        const glm::vec3& pos = positions[i];
+        const glm::vec3& norm = normals[i];
+
+        // Position
+        outVertexBuffer.push_back(pos.x);
+        outVertexBuffer.push_back(pos.y);
+        outVertexBuffer.push_back(pos.z);
+
+        // Normal
+        outVertexBuffer.push_back(norm.x);
+        outVertexBuffer.push_back(norm.y);
+        outVertexBuffer.push_back(norm.z);
+
+        // Color
+        outVertexBuffer.push_back(color.r);
+        outVertexBuffer.push_back(color.g);
+        outVertexBuffer.push_back(color.b);
+    }
+}
+
+bool LineIntersectsTriangle2(
+    const glm::vec3& p0, const glm::vec3& p1,
+    const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
+    glm::vec3& intersectionStart, glm::vec3& intersectionEnd,
+    bool& isSegmentIntersection)
+{
+    const glm::vec3 dir = p1 - p0;
+    const glm::vec3 e1 = v1 - v0;
+    const glm::vec3 e2 = v2 - v0;
+
+    const glm::vec3 normal = glm::normalize(glm::cross(e1, e2));
+    const float denom = glm::dot(normal, dir);
+
+    // Check if line and triangle are parallel
+    if (fabs(denom) < std::numeric_limits<float>::epsilon()) {
+        // Coplanar check
+        const float dist = glm::dot(normal, p0 - v0);
+        if (fabs(dist) > std::numeric_limits<float>::epsilon()) {
+            return false; // Parallel but not coplanar
+        }
+
+        // Segment and triangle are coplanar – check for 2D overlap
+        // Project onto best 2D plane
+        int axis = 0;
+        glm::vec3 n = glm::abs(normal);
+        if (n.y > n.x) axis = 1;
+        if (n.z > n[axis]) axis = 2;
+
+        auto project2D = [axis](const glm::vec3& p) -> glm::vec2 {
+            switch (axis) {
+            case 0: return glm::vec2(p.y, p.z); // drop x
+            case 1: return glm::vec2(p.x, p.z); // drop y
+            case 2: return glm::vec2(p.x, p.y); // drop z
+            }
+            return glm::vec2(0); // should never happen
+            };
+
+        glm::vec2 segA = project2D(p0);
+        glm::vec2 segB = project2D(p1);
+        glm::vec2 tri0 = project2D(v0);
+        glm::vec2 tri1 = project2D(v1);
+        glm::vec2 tri2 = project2D(v2);
+
+        // Check if either endpoint is inside the triangle
+        auto PointInTri = [](const glm::vec2& pt, const glm::vec2& a, const glm::vec2& b, const glm::vec2& c) {
+            auto sign = [](const glm::vec2& p1, const glm::vec2& p2, const glm::vec2& p3) {
+                return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+                };
+            float d1 = sign(pt, a, b);
+            float d2 = sign(pt, b, c);
+            float d3 = sign(pt, c, a);
+            bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+            bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+            return !(hasNeg && hasPos);
+            };
+
+        std::vector<glm::vec3> insidePoints;
+        if (PointInTri(segA, tri0, tri1, tri2)) insidePoints.push_back(p0);
+        if (PointInTri(segB, tri0, tri1, tri2)) insidePoints.push_back(p1);
+
+        // Also check for segment-triangle edge intersections in 2D
+        auto SegmentIntersect = [](glm::vec2 p, glm::vec2 r, glm::vec2 q, glm::vec2 s, glm::vec2& out) -> bool {
+            float rxs = r.x * s.y - r.y * s.x;
+            if (fabs(rxs) < std::numeric_limits<float>::epsilon()) return false; // parallel
+            glm::vec2 qp = q - p;
+            float t = (qp.x * s.y - qp.y * s.x) / rxs;
+            float u = (qp.x * r.y - qp.y * r.x) / rxs;
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                out = p + t * r;
+                return true;
+            }
+            return false;
+            };
+
+        glm::vec2 segVec = segB - segA;
+        std::vector<glm::vec2> triEdges[3] = {
+            {tri0, tri1},
+            {tri1, tri2},
+            {tri2, tri0}
+        };
+
+        for (auto& edge : triEdges) {
+            glm::vec2 ip;
+            if (SegmentIntersect(segA, segVec, edge[0], edge[1] - edge[0], ip)) {
+                glm::vec3 full = p0 + dir * glm::length(ip - segA) / glm::length(segVec);
+                insidePoints.push_back(full);
+            }
+        }
+
+        if (insidePoints.size() >= 2) {
+            intersectionStart = insidePoints[0];
+            intersectionEnd = insidePoints[1];
+            isSegmentIntersection = true;
+            return true;
+        }
+        else if (insidePoints.size() == 1) {
+            intersectionStart = insidePoints[0];
+            intersectionEnd = insidePoints[0];
+            isSegmentIntersection = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    // Not coplanar – use Möller–Trumbore for intersection point
+    const glm::vec3 h = glm::cross(dir, e2);
+    const float a = glm::dot(e1, h);
+    const float f = 1.0f / a;
+    const glm::vec3 s = p0 - v0;
+    const float u = f * glm::dot(s, h);
+    if (u < 0.0f || u > 1.0f) return false;
+
+    const glm::vec3 q = glm::cross(s, e1);
+    const float v = f * glm::dot(dir, q);
+    if (v < 0.0f || u + v > 1.0f) return false;
+
+    const float t = f * glm::dot(e2, q);
+    if (t < 0.0f || t > 1.0f) return false;
+
+    intersectionStart = p0 + t * dir;
+    intersectionEnd = intersectionStart;
+    isSegmentIntersection = false;
+    return true;
+}
 
 glm::vec3 CalculateCentroid(const std::vector<glm::vec3>& points) {
     glm::vec3 centroid(0.0f);
@@ -31,10 +228,32 @@ float AngleBetweenPoints(const glm::vec3& point, const glm::vec3& centroid) {
 // Sort the points by angle relative to the centroid
 void SortPointsByAngle(std::vector<glm::vec3>& points) {
     glm::vec3 centroid = CalculateCentroid(points);
-
+    if (points.size() < 3)
+        return;
     // Sort the points based on their angle relative to the centroid
     std::sort(points.begin(), points.end(), [&centroid](const glm::vec3& a, const glm::vec3& b) {
         return AngleBetweenPoints(a, centroid) < AngleBetweenPoints(b, centroid);
+        });
+    points.push_back(centroid);
+}
+
+void SortPointsOnPlaneByAngle(std::vector<glm::vec3>& points, const glm::vec3& normal) {
+    glm::vec3 centroid = CalculateCentroid(points);
+
+    // Create a 2D basis on the plane
+    glm::vec3 refAxis = glm::normalize(glm::cross(normal, glm::vec3(0, 1, 0)));
+    if (glm::length(refAxis) < 0.01f)
+        refAxis = glm::normalize(glm::cross(normal, glm::vec3(1, 0, 0)));
+    glm::vec3 upAxis = glm::normalize(glm::cross(normal, refAxis));
+
+    std::sort(points.begin(), points.end(), [&](const glm::vec3& a, const glm::vec3& b) {
+        glm::vec3 da = a - centroid;
+        glm::vec3 db = b - centroid;
+
+        float angleA = atan2(glm::dot(da, upAxis), glm::dot(da, refAxis));
+        float angleB = atan2(glm::dot(db, upAxis), glm::dot(db, refAxis));
+
+        return angleA < angleB;
         });
 }
 
@@ -72,21 +291,26 @@ void Shapes::ExtractUniquePositionsAndIndicesWorld(const Mesh& mesh, std::vector
 
     for (size_t i = 0; i < mesh.indices.size(); ++i) {
         unsigned int originalIndex = mesh.indices[i];
-        glm::vec3 position(
+
+        glm::vec3 localPosition(
             mesh.vertices[originalIndex * 9 + 0],
             mesh.vertices[originalIndex * 9 + 1],
             mesh.vertices[originalIndex * 9 + 2]
         );
 
-        if (positionToIndex.count(position) == 0) {
+        glm::vec3 worldPosition = glm::vec3(model * glm::vec4(localPosition, 1.0f));
+
+        auto it = positionToIndex.find(worldPosition);
+        if (it == positionToIndex.end()) {
             // New unique position
             unsigned int newIndex = static_cast<unsigned int>(outPositions.size());
-            position = glm::vec3(model * glm::vec4(position, 1.0f));
-            outPositions.push_back(position);
-            positionToIndex[position] = newIndex;
+            outPositions.push_back(worldPosition);
+            positionToIndex[worldPosition] = newIndex;
+            outIndices.push_back(newIndex);
         }
-
-        outIndices.push_back(positionToIndex[position]);
+        else {
+            outIndices.push_back(it->second);
+        }
     }
 }
 
@@ -94,7 +318,8 @@ void Shapes::ExtractUniquePositionsAndIndicesWorld(const Mesh& mesh, std::vector
 Mesh Shapes::CreateSphere(float radius, unsigned int sectorCount, unsigned int stackCount, glm::vec3 color) {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
-
+    sectorCount -= 1;
+    stackCount -= 1;
     for (unsigned int i = 0; i <= stackCount; ++i) {
         float stackAngle = glm::pi<float>() / 2 - i * glm::pi<float>() / stackCount; // from pi/2 to -pi/2
         float xy = radius * cosf(stackAngle); // r * cos(phi)
@@ -503,27 +728,6 @@ std::vector<unsigned int> Shapes::GetVertexesWithinMesh(const Mesh& meshA, const
             pointsWithin.push_back(i);
         }
     }
-    //if (pointsWithin.empty()) {
-    //    //firstMeshPoints = false;
-    //    for (int i = 0;i < vertexPositionB.size();i++) {
-    //        glm::vec3 worldV0 = glm::vec3(modelMatrixB * glm::vec4(vertexPositionB[i], 1.0f));
-    //        if (IsPointInsideConvexMesh(worldV0, vertexPositionA, IndicesA, modelMatrixA)) {
-    //            pointsWithin.push_back(i);
-    //        }
-    //    }
-    //}
-
-    /*std::vector<unsigned int> edges;
-    if (firstMeshPoints) {
-        for (auto point : pointsWithin) {
-            edges = GetConnectedVertices(IndicesA, point);
-        }
-    }
-    else {
-        for (auto point : pointsWithin) {
-            edges = GetConnectedVertices(IndicesB, point);
-        }
-    }*/
 
     return pointsWithin;
 }
@@ -598,8 +802,6 @@ std::vector<glm::vec3> Shapes::GetIntersectionPoints(const Mesh& meshA, const gl
                         intersectionPoints.push_back(intersection);
                     }
                 }
-                /*if (intersections == 2)
-                    break;*/
             }
         }
         for (auto point : pointsWithinA) {
@@ -622,8 +824,6 @@ std::vector<glm::vec3> Shapes::GetIntersectionPoints(const Mesh& meshA, const gl
                         intersectionPoints.push_back(intersection);
                     }
                 }
-                /*if (intersections == 2)
-                    break;*/
             }
         }
 
@@ -679,76 +879,76 @@ std::vector<glm::vec3> Shapes::GetEdgeIntersection(const glm::vec3& v0, const gl
 
 
 
-std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
+std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB)
 {
     std::vector<glm::vec3> vertexPositionA;
     std::vector<glm::vec3> vertexPositionB;
     std::vector<unsigned int> IndicesA;
     std::vector<unsigned int> IndicesB;
-    const float tolerance = 0.001f;  // Define a small tolerance for duplicate points
+    const float tolerance = 0.00001f;  // Define a small tolerance for duplicate points
     ExtractUniquePositionsAndIndicesWorld(meshA, vertexPositionA, IndicesA, modelMatrixA);
     ExtractUniquePositionsAndIndicesWorld(meshB, vertexPositionB, IndicesB, modelMatrixB);;
     std::vector<glm::vec3> pointsWithinB = GetVertexesWithinMesh2(vertexPositionA, vertexPositionB, IndicesA, IndicesB);
     std::vector<glm::vec3> pointsWithinA = GetVertexesWithinMesh2(vertexPositionB, vertexPositionA, IndicesB, IndicesA);
-
+    //BuildVertexBufferFromPositionsAndIndices(vertexPositionA, IndicesA, meshA.vertices, glm::vec3(0.0f, 1.0f, 0.0f));
     std::vector<Face> faces;
 
     bool intersect;
-    for (int i = 0;i < IndicesA.size();i += 3) {
-        Face face;
-        glm::vec3 v0 = vertexPositionA[IndicesA[i]];
-        glm::vec3 v1 = vertexPositionA[IndicesA[i + 1]];
-        glm::vec3 v2 = vertexPositionA[IndicesA[i + 2]];
+    //for (int i = 0;i < IndicesA.size();i += 3) {
+    //    Face face;
+    //    glm::vec3 v0 = vertexPositionA[IndicesA[i]];
+    //    glm::vec3 v1 = vertexPositionA[IndicesA[i + 1]];
+    //    glm::vec3 v2 = vertexPositionA[IndicesA[i + 2]];
 
-        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
-        face.normal = normal; // You’ll need to add this to your Face struct
-        for (int j = 0;j < IndicesB.size();j += 3) {
-            glm::vec3 intersection;
-            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
-            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
-            intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
-        }
+    //    glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+    //    face.normal = normal; // You’ll need to add this to your Face struct
+    //    for (int j = 0;j < IndicesB.size();j += 3) {
+    //        glm::vec3 intersection;
+    //        intersect = LineIntersectsTriangle(vertexPositionA[IndicesB[j]], vertexPositionA[IndicesA[i + 1]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+    //        if (intersect)
+    //            face.facePoints.push_back(intersection);
+    //        intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+    //        if (intersect)
+    //            face.facePoints.push_back(intersection);
+    //        intersect = LineIntersectsTriangle(vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]], vertexPositionB[IndicesB[j]], vertexPositionB[IndicesB[j + 1]], vertexPositionB[IndicesB[j + 2]], intersection);
+    //        if (intersect)
+    //            face.facePoints.push_back(intersection);
+    //    }
 
-        for (auto& point : pointsWithinB) {
-            if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i+2]])) {
-                face.facePoints.push_back(point);
-            }
-        }
+    //    for (auto& point : pointsWithinB) {
+    //        if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i+2]])) {
+    //            face.facePoints.push_back(point);
+    //        }
+    //    }
 
-        for (auto& point : pointsWithinA) {
-            if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]])) {
-                face.facePoints.push_back(point);
-            }
-        }
+    //    /*for (auto& point : pointsWithinA) {
+    //        if (IsPointInTriangle(point, vertexPositionA[IndicesA[i]], vertexPositionA[IndicesA[i + 1]], vertexPositionA[IndicesA[i + 2]])) {
+    //            face.facePoints.push_back(point);
+    //        }
+    //    }*/
 
-        std::vector<glm::vec3> uniquePoints;
+    //    std::vector<glm::vec3> uniquePoints;
 
-        for (const auto& point : face.facePoints) {
-            bool isDuplicate = false;
-            for (const auto& uniquePoint : uniquePoints) {
-                if (glm::length(point - uniquePoint) < tolerance) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-            if (!isDuplicate) {
-                uniquePoints.push_back(point);
-            }
-        }
+    //    for (const auto& point : face.facePoints) {
+    //        bool isDuplicate = false;
+    //        for (const auto& uniquePoint : uniquePoints) {
+    //            if (glm::length(point - uniquePoint) < tolerance) {
+    //                isDuplicate = true;
+    //                break;
+    //            }
+    //        }
+    //        if (!isDuplicate) {
+    //            uniquePoints.push_back(point);
+    //        }
+    //    }
 
-        SortPointsByAngle(uniquePoints);
-        face.facePoints = uniquePoints;
-        face.indeces = TriangulateConvexPolygon(face.facePoints, face.normal);
+    //    SortPointsByAngle(uniquePoints);
+    //    face.facePoints = uniquePoints;
+    //    face.indeces = TriangulateConvexPolygon(face.facePoints, face.normal);
 
-        if(face.facePoints.size()>0)
-        faces.push_back(face);
-    }
+    //    if(face.facePoints.size()>0)
+    //    faces.push_back(face);
+    //}
 
     for (int i = 0;i < IndicesB.size();i += 3) {
         Face face;
@@ -758,26 +958,43 @@ std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, co
 
         glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
         face.normal = normal; // You’ll need to add this to your Face struct
+        bool SegmentIntersection;
+        glm::vec3 intersectionA,intersectionB;
         for (int j = 0;j < IndicesA.size();j += 3) {
-            glm::vec3 intersection;
-            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
-            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 2]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
-            intersect = LineIntersectsTriangle(vertexPositionB[IndicesB[i+1]], vertexPositionB[IndicesB[i + 2]], vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionA[IndicesA[j + 2]], intersection);
-            if (intersect)
-                face.facePoints.push_back(intersection);
+            intersect = LineIntersectsTriangle2(vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]], intersectionA, intersectionB, SegmentIntersection);
+            if (intersect) {
+                if (SegmentIntersection) {
+                    face.facePoints.push_back(intersectionA);
+                    face.facePoints.push_back(intersectionB);
+                }else
+                    face.facePoints.push_back(intersectionA);
+            }
+            intersect = LineIntersectsTriangle2(vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 2]], vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]], intersectionA, intersectionB, SegmentIntersection);
+            if (intersect) {
+                if (SegmentIntersection) {
+                    face.facePoints.push_back(intersectionA);
+                    face.facePoints.push_back(intersectionB);
+                }
+                else
+                    face.facePoints.push_back(intersectionA);
+            }
+            intersect = LineIntersectsTriangle2(vertexPositionA[IndicesA[j]], vertexPositionA[IndicesA[j + 1]], vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]], intersectionA, intersectionB, SegmentIntersection);
+            if (intersect) {
+                if (SegmentIntersection) {
+                    face.facePoints.push_back(intersectionA);
+                    face.facePoints.push_back(intersectionB);
+                }
+                else
+                    face.facePoints.push_back(intersectionA);
+            }
         }
-
-        for (auto& point : pointsWithinB) {
+        /*for (auto& point : pointsWithinB) {
             if (IsPointInTriangle(point, vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]])) {
                 face.facePoints.push_back(point);
             }
-        }
+        }*/
 
-        for (auto& point : pointsWithinA) {
+       for (auto& point : pointsWithinA) {
             if (IsPointInTriangle(point, vertexPositionB[IndicesB[i]], vertexPositionB[IndicesB[i + 1]], vertexPositionB[IndicesB[i + 2]])) {
                 face.facePoints.push_back(point);
             }
@@ -788,7 +1005,7 @@ std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, co
         for (const auto& point : face.facePoints) {
             bool isDuplicate = false;
             for (const auto& uniquePoint : uniquePoints) {
-                if (glm::length(point - uniquePoint) < tolerance) {
+                if (glm::length(uniquePoint - point) < tolerance) {
                     isDuplicate = true;
                     break;
                 }
@@ -802,30 +1019,12 @@ std::vector<Face> Shapes::GeneratePolygonIntersectionFaces(const Mesh& meshA, co
         face.facePoints = uniquePoints;
         face.indeces = TriangulateConvexPolygon(face.facePoints, face.normal);
 
-        if (face.facePoints.size() > 0)
+        if (face.facePoints.size() > 0) {
             faces.push_back(face);
-    }
-
-
-    std::vector<glm::vec3> uniquePoints;
-    for (const auto& face :faces) {
-        for (const auto& point : face.facePoints) {
-            bool isDuplicate = false;
-            for (const auto& uniquePoint : uniquePoints) {
-                if (glm::length(point - uniquePoint) < tolerance) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-            if (!isDuplicate) {
-                uniquePoints.push_back(point);
-            }
+            DebugPrintTriangleNormals(face.facePoints, face.indeces, face.normal);
         }
     }
-    for (auto& point : uniquePoints) {
-        std::cout << glm::to_string(point)<<"\n";
-    }
-    std::cout  << "\n";
+
     return faces;
 }
 
@@ -867,67 +1066,39 @@ bool Shapes::LineIntersectsTriangle(const glm::vec3& p0, const glm::vec3& p1, co
 
 bool Shapes::IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float epsilon)
 {
-    //// Compute vectors
-    //glm::vec3 v0v1 = v1 - v0;
-    //glm::vec3 v0v2 = v2 - v0;
-    //glm::vec3 v0p = point - v0;
 
-    //// Compute dot products
-    //float d00 = glm::dot(v0v1, v0v1);
-    //float d01 = glm::dot(v0v1, v0v2);
-    //float d11 = glm::dot(v0v2, v0v2);
-    //float d20 = glm::dot(v0p, v0v1);
-    //float d21 = glm::dot(v0p, v0v2);
+    // Compute the normal of the triangle
+    glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
-    //// Compute barycentric coordinates
-    //float denom = d00 * d11 - d01 * d01;
-    //if (fabs(denom) < epsilon)
-    //    return false; // Degenerate triangle
+    // Project point onto triangle plane
+    float distance = glm::dot(normal, point - v0);
+    glm::vec3 projectedPoint = point - distance * normal;
 
-    //float v = (d11 * d20 - d01 * d21) / denom;
-    //float w = (d00 * d21 - d01 * d20) / denom;
-    //float u = 1.0f - v - w;
+    if (fabs(distance) > epsilon)
+        return false; // Point not on triangle's plane
 
-    //// Check if point is inside or on triangle
-    //return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
-    //    u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
+    // Compute vectors
+    glm::vec3 v0v1 = v1 - v0;
+    glm::vec3 v0v2 = v2 - v0;
+    glm::vec3 v0p = projectedPoint - v0;
 
-    glm::vec3 p = point;
-    glm::vec3 a = v0;
-    glm::vec3 b = v1;
-    glm::vec3 c = v2;
+    // Compute dot products
+    float d00 = glm::dot(v0v1, v0v1);
+    float d01 = glm::dot(v0v1, v0v2);
+    float d11 = glm::dot(v0v2, v0v2);
+    float d20 = glm::dot(v0p, v0v1);
+    float d21 = glm::dot(v0p, v0v2);
 
-    // Move the triangle so that the point becomes the 
-    // triangles origin
-    a -= p;
-    b -= p;
-    c -= p;
+    float denom = d00 * d11 - d01 * d01;
+    if (fabs(denom) < epsilon)
+        return false; // Degenerate triangle
 
-    // The point should be moved too, so they are both
-    // relative, but because we don't use p in the
-    // equation anymore, we don't need it!
-    // p -= p;
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
 
-    // Compute the normal vectors for triangles:
-    // u = normal of PBC
-    // v = normal of PCA
-    // w = normal of PAB
-
-    glm::vec3 u = glm::cross(b, c);
-    glm::vec3 v = glm::cross(c, a);
-    glm::vec3 w = glm::cross(a, b);
-
-    // Test to see if the normals are facing 
-    // the same direction, return false if not
-    if (glm::dot(u, v) < 0.0f) {
-        return false;
-    }
-    if (dot(u, w) < 0.0f) {
-        return false;
-    }
-
-    // All normals facing the same way, return true
-    return true;
+    return (u >= -epsilon && v >= -epsilon && w >= -epsilon &&
+        u <= 1.0f + epsilon && v <= 1.0f + epsilon && w <= 1.0f + epsilon);
 }
 
 std::vector<unsigned int> Shapes::TriangulateConvexPolygon(const std::vector<glm::vec3>& polygonVertices, const glm::vec3& normal) {
@@ -936,14 +1107,14 @@ std::vector<unsigned int> Shapes::TriangulateConvexPolygon(const std::vector<glm
     unsigned int n = polygonVertices.size();
     if (n < 3) return triangleIndices;
 
+
+    unsigned int anchorIndex = n-1;
     glm::vec3 v0 = polygonVertices[0];
     glm::vec3 v1 = polygonVertices[1];
     glm::vec3 v2 = polygonVertices[2];
     glm::vec3 polygonNormal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
-    unsigned int anchorIndex = 0;
-
-    for (unsigned int i = 1; i < n - 1; ++i) {
+    for (unsigned int i = 0; i < n - 2; ++i) {
         if (glm::dot(polygonNormal, normal) < 0) {
             triangleIndices.push_back(anchorIndex);
             triangleIndices.push_back(i + 1);       
@@ -955,6 +1126,17 @@ std::vector<unsigned int> Shapes::TriangulateConvexPolygon(const std::vector<glm
             triangleIndices.push_back(i);           
             triangleIndices.push_back(i + 1);
         }
+    }
+    if (glm::dot(polygonNormal, normal) < 0) {
+        triangleIndices.push_back(anchorIndex);
+        triangleIndices.push_back(0);
+        triangleIndices.push_back(n-2);
+    }
+    else {
+
+        triangleIndices.push_back(anchorIndex);
+        triangleIndices.push_back(n-2);
+        triangleIndices.push_back(0);
     }
 
     return triangleIndices;

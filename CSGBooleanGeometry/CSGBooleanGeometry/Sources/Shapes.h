@@ -75,8 +75,8 @@ public:
     static std::vector<glm::vec3> GetIntersectionPoints(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB, bool firstMeshPoints);
     static bool LineIntersectsTriangle(const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, glm::vec3& intersection);
     static std::vector<glm::vec3> GetEdgeIntersection(const glm::vec3& v0, const glm::vec3& v1, const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices, const glm::mat4& modelMatrix);
-    static std::vector<Face> GeneratePolygonIntersectionFaces(const Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB);
-    static bool IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float epsilon = 0.0001f);
+    static std::vector<Face> GeneratePolygonIntersectionFaces(Mesh& meshA, const glm::mat4& modelMatrixA, const Mesh& meshB, const glm::mat4& modelMatrixB);
+    static bool IsPointInTriangle(const glm::vec3& point, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float epsilon = 1e-8f);
     static std::vector<unsigned int> TriangulateConvexPolygon(const std::vector<glm::vec3>& polygonVertices, const glm::vec3& normal);
 };
 

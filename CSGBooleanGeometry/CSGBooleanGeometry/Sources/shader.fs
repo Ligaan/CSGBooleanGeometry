@@ -16,6 +16,7 @@ struct Light {
 
 uniform vec3 viewPos;
 uniform Light light;
+uniform float Multi = 1.0f;
   
 void main()
 {
@@ -29,5 +30,5 @@ void main()
     vec3 diffuse = light.diffuse * diff * ourColor;
 
     vec3 result = ambient + diffuse;
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, 1.0) * Multi;
 }

@@ -61,9 +61,11 @@ void ApplicationWindow::Initialize()
 
     glEnable(GL_DEPTH_TEST);
 
-    shape1 = Shapes::CreateSphere(1.0f, 64.0f, 64.0f, glm::vec3(0.6f, 0.2f, 0.9f)); //Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
+    shape1 = Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f)); //Shapes::CreateCylinder(1.0f, 2.0f, 64, glm::vec3(0.6f, 0.2f, 0.9f));//Shapes::CreateSphere(1.0f, 64, 64, glm::vec3(0.6f, 0.2f, 0.9f));
     shape2 = Shapes::CreateBox(1.0f,1.0f,2.0f, glm::vec3(0.2f,0.6f,0.9f));
 
+
+    bool test = Shapes::IsPointInTriangle(glm::vec3(5.0f, 0.0f, 0.0f), glm::vec3(5.0f, 0.0f, 2.0f), glm::vec3(6.0f, 0.0f, 2.0f), glm::vec3(6.0f, 1.0f, 2.0f));
         // world transformation
         glm::mat4 model1 = glm::mat4(1.0f);
     model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
@@ -84,7 +86,6 @@ void ApplicationWindow::Initialize()
         for(auto& point:points)
         face.push_back(Shapes::FaceToMesh(point,glm::vec3(1.0f,0.0f,0.0f)));
     }
-
 
     ourShader = new Shader("Sources/shader.vs", "Sources/shader.fs");
 }
@@ -128,6 +129,7 @@ void ApplicationWindow::Render()
     glm::mat4 view = camera.GetViewMatrix();
     ourShader->setMat4("projection", projection);
     ourShader->setMat4("view", view);
+    ourShader->setFloat("Multi", 1.0f);
 
 
 
@@ -143,32 +145,46 @@ void ApplicationWindow::Render()
     glm::mat4 model3 = glm::mat4(1.0f);
     model3 = glm::translate(model3, glm::vec3(0.0f, 0.0f, 0.0f));
     ourShader->setMat4("model", model3);
+    ourShader->setFloat("Multi", 1.0f);
 
-    for (auto& f : face) {
+    //for (auto& f : face) {
+    /*glBindVertexArray(face[0].VAO);
+    glDrawElements(GL_TRIANGLES, face[0].indexCount, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);*/
 
-
-        glBindVertexArray(f.VAO);
-        glDrawElements(GL_TRIANGLES, f.indexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(face[2].VAO);
+         glDrawElements(GL_TRIANGLES, face[2].indexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
-    }
+    //}
 
     }
     else {
 
-    // world transformation
-    glm::mat4 model1 = glm::mat4(1.0f);
-    model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
-    ourShader->setMat4("model", model1);
+    //// world transformation
+    //glm::mat4 model1 = glm::mat4(1.0f);
+    //model1 = glm::translate(model1, glm::vec3(5.0f, 0.0f, 0.0f));
+    //ourShader->setMat4("model", model1);
 
-    // render the cube
-    glBindVertexArray(shape1.VAO);
-    glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
-
+    //// render the cube
+    //glBindVertexArray(shape1.VAO);
+    //glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
+    //glBindVertexArray(0);
+        glm::mat4 model1 = glm::mat4(1.0f);
+    for (int i = 0;i < face[2].vertices.size();i += 9) {
+        model1 = glm::mat4(1.0f);
+        model1 = glm::translate(model1, glm::vec3(face[2].vertices[i], face[2].vertices[i + 1], face[2].vertices[i + 2]));
+        model1 = glm::scale(model1, glm::vec3(0.1f));
+        ourShader->setMat4("model", model1);
+        ourShader->setFloat("Multi", 0.01f* i);
+        glBindVertexArray(shape1.VAO);
+        glDrawElements(GL_TRIANGLES, shape1.indexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
     // world transformation
     glm::mat4 model2 = glm::mat4(1.0f);
     model2 = glm::translate(model2,glm::vec3(5.5f,0.5f,1.0f));
     ourShader->setMat4("model", model2);
+    ourShader->setFloat("Multi", 1.0f);
 
     glBindVertexArray(shape2.VAO);
     glDrawElements(GL_TRIANGLES, shape2.indexCount, GL_UNSIGNED_INT, 0);
